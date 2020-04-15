@@ -1,12 +1,37 @@
 import IORedis from 'ioredis';
 import * as R from 'ramda';
-import {
-  IRedisClient,
-  ConnectionDetails,
-  RedisClientPing,
-  IManagedLifetime,
-} from '../../domain/types';
-import { tuple } from '../../core/async';
+import { IManagedLifetime, withManagedLifetime } from '../lifetime';
+import { tuple } from '../async';
+
+export type ConnectionDetails = {
+  host: string;
+  port: number;
+  db: number;
+  password: string;
+};
+
+export type RedisClientPing = {
+  pingResponse?: string;
+  error?: Error;
+  connection?: ConnectionDetails;
+  clientStatus: string;
+};
+
+export interface IRedisClient {
+  safePing(): Promise<RedisClientPing>;
+  connection(): Promise<ConnectionDetails>;
+  client(): Promise<IORedis.Redis>;
+}
+
+type RedisDetails =
+  | { host: string; port: number }
+  | (() => Promise<{ host: string; port: number }>);
+
+export type RedisConnection = {
+  details: RedisDetails;
+  db: number;
+  password: string;
+};
 
 type RedisClientOptions = {
   connectionFactory: () => Promise<ConnectionDetails>;
@@ -16,14 +41,13 @@ export function createRedisClient(
   options: RedisClientOptions,
 ): IRedisClient & IManagedLifetime {
   let client: IORedis.Redis;
-  let initialiseInFlight: Promise<void>;
   let details: ConnectionDetails;
 
   const connectionDetails = () => {
     return details;
   };
 
-  const destruct = (errorListener?: (...args: any[]) => void) => {
+  const disconnect = async (errorListener?: (...args: any[]) => void) => {
     try {
       if (client) {
         if (errorListener) {
@@ -34,14 +58,17 @@ export function createRedisClient(
     } catch (e) {
     } finally {
       client = null;
-      initialiseInFlight = null;
     }
+  };
+
+  const destroy = async () => {
+    await disconnect();
   };
 
   const setup = async () => {
     return new Promise<void>(async (resolve, reject) => {
       const errorListener = async (e: Error) => {
-        destruct(errorListener);
+        disconnect(errorListener);
         reject(
           new Error(`redis client handled error on initialise: ${e.message}`),
         );
@@ -69,7 +96,7 @@ export function createRedisClient(
           },
         });
       } catch (e) {
-        destruct(errorListener);
+        disconnect(errorListener);
         throw new Error(`redis client failed to initialise: ${e.message}`);
       }
 
@@ -80,13 +107,15 @@ export function createRedisClient(
         // If so, error events will be emitted which we dont want to handle anymore.
         // Our listener here deals with initial setup only.
         // If no error listeners, ioredis will be fire silently.
-        client.removeListener('error', errorListener);
+        if (client) {
+          client.removeListener('error', errorListener);
+        }
         resolve();
       });
     });
   };
 
-  return {
+  const redisClient: IRedisClient = {
     async safePing(): Promise<RedisClientPing> {
       if (!client) {
         return {
@@ -107,19 +136,17 @@ export function createRedisClient(
         connection: details,
       };
     },
-    init(): Promise<void> {
-      return initialiseInFlight || (initialiseInFlight = setup());
-    },
-    teardown(): Promise<void> {
-      destruct();
-      return Promise.resolve();
-    },
     connection(): Promise<ConnectionDetails> {
       return Promise.resolve(connectionDetails());
     },
     async client(): Promise<IORedis.Redis> {
-      await this.init();
       return client;
     },
   };
+
+  return withManagedLifetime<IRedisClient>({
+    setup,
+    destroy,
+    forKeys: ['safePing', 'client'],
+  })(redisClient);
 }

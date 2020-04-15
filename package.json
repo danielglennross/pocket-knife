@@ -25,23 +25,28 @@
     ]
   },
   "dependencies": {
-    "@hapi/hoek": "^6.2.1",
-    "@hapi/wreck": "^15.0.1",
-    "bull": "^3.7.0",
+    "@hapi/boom": "^9.0.0",
+    "@hapi/hoek": "^9.0.0",
+    "@hapi/wreck": "^17.0.0",
+    "agentkeepalive": "^4.1.0",
+    "bull": "^3.12.0",
     "http-proxy-agent": "^2.1.0",
     "ioredis": "^4.9.0",
     "json-bigint": "^0.3.0",
     "jsonwebtoken": "^8.5.1",
+    "p-cancelable": "^2.0.0",
+    "p-timeout": "^3.2.0",
     "pem": "^1.14.2",
     "ramda": "^0.26.1",
+    "redis-info": "^3.0.7",
     "redlock": "^3.1.2",
+    "reflect-metadata": "^0.1.13",
     "uuid": "^3.3.2",
     "word-wrap": "^1.2.3"
   },
   "devDependencies": {
-    "@types/bull": "^3.5.11",
-    "@types/hapi__hoek": "^6.2.0",
-    "@types/hapi__wreck": "^15.0.0",
+    "@types/bull": "^3.12.0",
+    "@types/hapi__hoek": "^9.0.0",
     "@types/ioredis": "^4.0.10",
     "@types/jsonwebtoken": "^8.3.2",
     "@types/node": "^11.11.6",
@@ -60,7 +65,7 @@
     "prettier-check": "2.0.0",
     "reflect-metadata": "^0.1.13",
     "semantic-release": "^15.13.16",
-    "typescript": "^3.3.4000"
+    "typescript": "^3.8.3"
   },
   "optionalDependencies": {
     "ts-node": "^8.0.3"

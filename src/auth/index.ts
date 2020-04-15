@@ -2,13 +2,32 @@ import pem from 'pem';
 import wrap from 'word-wrap';
 import * as jwt from 'jsonwebtoken';
 import * as R from 'ramda';
-import {
-  TokenPayload,
-  TokenVerifyOptions,
-  TokenSignOptions,
-  TokenValidateErrorResult,
-} from '../types';
-import { tuple } from '../../core/async';
+import { tuple } from '../async';
+
+export type TokenValidateSuccessResult = { isOk: true };
+export type TokenValidateErrorResult = { isOk: false; message: string };
+export type TokenValidateResult =
+  | TokenValidateSuccessResult
+  | TokenValidateErrorResult;
+
+export type TokenVerifyOptions = {
+  requiredScope: string;
+  validateToken?: (tokenPayload: TokenPayload) => Promise<TokenValidateResult>;
+};
+
+export type TokenPayload = {
+  sub?: string;
+  nbf?: number;
+  scope: ReadonlyArray<string>;
+  client_id?: string;
+  sitecode?: string;
+  auth_time?: string;
+};
+
+export type TokenSignOptions = {
+  header: object;
+  expiresIn: number;
+};
 
 export async function derToPublicKey(derCert: string) {
   const pemCert =
@@ -32,7 +51,7 @@ export function signJwt(
   jwtSignOptions: TokenSignOptions,
 ) {
   const { header, expiresIn } = jwtSignOptions;
-  const options = {
+  const options: jwt.SignOptions = {
     header,
     algorithm: 'RS256',
     expiresIn,

@@ -6,16 +6,7 @@ type Registration = {
   resolver: Resolver<any>;
 };
 
-type ResolverFuncOptions = {
-  lazy?: boolean;
-};
-
 type Resolver<T> = (context: ContainerContext) => T;
-
-type RegistrationOption = {
-  lifetime?: 'single' | 'factory';
-  tag?: string;
-};
 
 type RegistrationResolver = (registrationFunc: Resolver<any>) => any;
 
@@ -29,7 +20,16 @@ type RegistrationDependency = {
   parent: RegistrationDependency;
 };
 
-type ContainerContext = {
+export type RegistrationOption = {
+  lifetime?: 'single' | 'factory';
+  tag?: string;
+};
+
+export type ResolverFuncOptions = {
+  lazy?: boolean;
+};
+
+export type ContainerContext = {
   resolve: <U = any>(
     dependencyName: string,
     options?: ResolverFuncOptions,
@@ -37,7 +37,7 @@ type ContainerContext = {
   resolveTagged: (tagName: string) => any;
 };
 
-export default class Container {
+export class Container {
   private registrations: Registration[];
   private lifetimeCreator: LifetimeCreator;
 
@@ -125,9 +125,7 @@ export default class Container {
 
       if (hasCircularDependency(dependencyType.parent)) {
         throw new Error(
-          `${name} registration has a circular dependency on ${
-            dependencyType.parent.name
-          }`,
+          `${name} registration has a circular dependency on ${dependencyType.parent.name}`,
         );
       }
 

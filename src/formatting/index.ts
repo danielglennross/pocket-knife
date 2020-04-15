@@ -1,6 +1,6 @@
 import * as R from 'ramda';
 import JSONBigInt from 'json-bigint';
-import { getNonEnumerableEntries } from './object';
+import { getNonEnumerableEntries } from '../object';
 
 const jsonParser: { parse: <T>(input: string) => T } = JSONBigInt({
   storeAsString: true,
@@ -27,15 +27,33 @@ export function concatenateQueryParams(obj: Object) {
 }
 
 export function printObject(obj: object): string {
+  function isJson(value: string = ''): [object, boolean] {
+    if (
+      typeof value === 'string' &&
+      R.any(s => value.startsWith(s), ['{', '['])
+    ) {
+      try {
+        return [JSON.parse(value), true];
+      } catch (e) {}
+    }
+    return [null, false];
+  }
+
   function walk(str: string, tab: number, obj: object) {
     getNonEnumerableEntries(obj).forEach(([key, value]) => {
       const space = ' '.repeat(tab);
-      if (typeof value === 'object') {
+      const walkInner = (obj: object) => {
         str += `\n${space}${key}: {`;
-        str = walk(str, ++tab, value || {});
+        str = walk(str, ++tab, obj || {});
         str += `\n${space}}`;
         --tab;
-        return;
+      };
+      if (typeof value === 'object') {
+        return walkInner(value);
+      }
+      const [json, parsed] = isJson(value);
+      if (parsed) {
+        return walkInner(json);
       }
       str += `\n${space}${key}: ${value || ''.toString()}`;
     });
