@@ -10,6 +10,7 @@ import {
   QueueOptions,
   ILinkableProducingQueue,
   Queue,
+  IQueue,
   IQueueCleaner,
   QueueCleanerDebugInfo,
   QueueDebugInfo,
@@ -56,7 +57,6 @@ export function createQueue<
   queueName,
   queueJobOptions,
   onProcessing,
-  onCreate,
   getEnableProcessing,
   getProcessingConcurrency,
   queueProviderFactory,
@@ -330,10 +330,8 @@ export function createQueue<
         R.mergeRight(defaultJobOptions),
       )(jobOptions);
 
-      const jobData = await (onCreate || (() => data))(data);
-
       const extendedData = {
-        ...jobData,
+        ...data,
         jobOptions: {
           retries,
           timeout,
@@ -399,4 +397,29 @@ export function createQueue<
       'work',
     ],
   })(queue);
+}
+
+type DecoratedPartialFunctionsFor<T> = {
+  [key in keyof Partial<T>]: (
+    base: T, // first arg, is base target (what we're decorating)
+    ...args: any[] // function args
+  ) => T[key] extends (...args: any) => any ? ReturnType<T[key]> : never; // only allow types where T[key] is a function
+};
+
+export function withDecoratedQueue<T extends IQueue>(
+  decorations: DecoratedPartialFunctionsFor<T>,
+) {
+  const forKeys = <(keyof T)[]>Object.keys(decorations);
+  return function(decorated: T): T {
+    return new Proxy(decorated, {
+      get(target: T, key: keyof T) {
+        return function wrapper(...args: any[]) {
+          if (!R.contains(key, forKeys)) {
+            return (<any>target[key]).call(target, ...args);
+          }
+          return decorations[key].call(decorations, decorated, ...args);
+        };
+      },
+    });
+  };
 }

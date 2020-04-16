@@ -49,8 +49,6 @@ export type OnProcessing<T> = (
   options: OnProcessingOptions,
 ) => Promise<void>;
 
-export type OnCreate<T> = (data: T) => Promise<T>;
-
 export interface IQueueConsumer<T> {
   work: OnProcessing<T>;
 }
@@ -119,7 +117,6 @@ export type BaseQueueOptions<T> = {
 export type QueueOptions<T> = {
   onProcessing: OnProcessing<T>;
   queueJobOptions: JobOptions;
-  onCreate?: OnCreate<T>;
 } & BaseQueueOptions<T>;
 
 export type QueueCleanerOptions = {
