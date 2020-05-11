@@ -1,4 +1,5 @@
 import * as R from 'ramda';
+import { AsyncFunctionKeys } from '../types';
 
 export class TargetError<T> extends Error {
   // private innerError so we include when calling toJSON
@@ -48,4 +49,50 @@ export function asTargetError<T>(
     return null;
   }
   return <T & TargetError<T>>(<unknown>err);
+}
+
+export function withCleanErrorOperations<T extends object>({
+  appendToError,
+  forKeys,
+}: {
+  appendToError: <E extends Error>(error: E) => Record<string, any> | void;
+  forKeys: AsyncFunctionKeys<T>[];
+}): (decorated: T) => T {
+  return function(decorated: T) {
+    async function runInErrorHandler(
+      key: AsyncFunctionKeys<T>,
+      ...args: any[]
+    ): Promise<any> {
+      try {
+        return await decorated[key as string].call(decorated, ...args);
+      } catch (err) {
+        const prop = value => ({ value, enumerable: true });
+        const errProps = R.reduce(
+          (acc, [k, v]) => {
+            return { ...acc, [k]: prop(v) };
+          },
+          {
+            stack: prop(err.stack),
+          },
+          Object.entries(appendToError(err) || {}),
+        );
+
+        throw Object.defineProperties(new Error(err.message), errProps);
+      }
+    }
+
+    return new Proxy(decorated, {
+      get(target: T, key: keyof T) {
+        if (target[key] === void 0) {
+          return target[key];
+        }
+        return function wrapper(...args: any[]) {
+          if (!R.contains(key, forKeys)) {
+            return (<any>target[key]).call(target, ...args);
+          }
+          return runInErrorHandler(<AsyncFunctionKeys<T>>key, ...args);
+        };
+      },
+    });
+  };
 }

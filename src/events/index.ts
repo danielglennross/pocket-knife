@@ -113,16 +113,21 @@ function buildEmitEvent(
       ...args,
     );
 
-    return await wg.wait({ timeoutInMs: wgTimeoutInMs }).catch(err => {
-      logger.error(
-        `failed to process all handlers for dependent event: ${eventName} (timeout)`,
-        new TargetError(err, {
-          category: 'bff-framework:events',
-          eventName,
-          timeoutInMs: wgTimeoutInMs,
-        }),
-      );
-    });
+    return await wg
+      .wait({
+        timeoutInMs: wgTimeoutInMs,
+        msg: `wait for '${eventName}' handlers to complete`,
+      })
+      .catch(err => {
+        logger.error(
+          `failed to process all handlers for dependent event: ${eventName} (timeout)`,
+          new TargetError(err, {
+            category: 'bff-framework:events',
+            eventName,
+            timeoutInMs: wgTimeoutInMs,
+          }),
+        );
+      });
   }
 
   async function emitAsyncEvent(eventName: string): Promise<void> {

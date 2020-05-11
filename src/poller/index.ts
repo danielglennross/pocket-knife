@@ -1,10 +1,13 @@
+import * as R from 'ramda';
 import { tuple } from '../async';
 import { IManagedLifetime, withManagedLifetime } from '../lifetime';
 import { ICache } from '../cache';
 import { ILogger } from '../logger';
 import { HttpResponse, IHttpClient } from '../http';
+import { useLogger, useCallerName } from '../trace';
 
 export interface IPoller {
+  readonly name: string;
   get<T>(): Promise<T>;
 }
 
@@ -25,7 +28,7 @@ export type PollerRequestOptions = {
 };
 
 export type PollerOptions = {
-  description: string;
+  name: string;
   cache: ICache;
   cacheOptions: PollerCacheOptions;
   httpClient: IHttpClient;
@@ -37,7 +40,7 @@ export function createPoller(
   options: PollerOptions,
 ): IPoller & IManagedLifetime {
   const {
-    description,
+    name,
     cache,
     cacheOptions,
     requestOptions,
@@ -51,7 +54,7 @@ export function createPoller(
     const [data, pollErr] = await tuple<any, Error>(fetchData());
     if (pollErr) {
       logger.error(
-        `failed to poll ${description} with err: ${pollErr.message}`,
+        `failed to poll ${name} with err: ${pollErr.message}`,
         pollErr,
       );
       return;
@@ -61,7 +64,7 @@ export function createPoller(
     );
     if (cacheSetErr) {
       logger.error(
-        `failed to set cache for poll ${description} with err: ${cacheSetErr.message}`,
+        `failed to set cache for poll ${name} with err: ${cacheSetErr.message}`,
         cacheSetErr,
       );
     }
@@ -97,6 +100,7 @@ export function createPoller(
   };
 
   const poller: IPoller = {
+    name,
     get<T>() {
       return cache.get<T>(cacheOptions.key);
     },
@@ -105,7 +109,7 @@ export function createPoller(
   return withManagedLifetime<IPoller>({
     setup,
     destroy,
-    logger: options.logger,
     forKeys: ['get'],
+    useTraceArgs: R.pipe(useLogger(logger), useCallerName(poller.name)),
   })(poller);
 }

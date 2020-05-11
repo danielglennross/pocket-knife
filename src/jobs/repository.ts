@@ -7,29 +7,23 @@ import {
   JobMeta,
   Job,
   IQueueRepository,
-  RedisMetrics,
   BoardQueues,
   AppJob,
   AppQueue,
   JobBoardStatus,
   QueueData,
+  JobStatus,
   JobState,
-  AggregateJobStatus,
+  JobReport,
   JobStateAuthorizeError,
   ILinkableQueue,
 } from '.';
 import { ILogger } from '../logger';
 import { tuple } from '../async';
 
-type ProviderJobState = JobState & {
-  name: string;
-  id: string | number;
-  data: any;
-  opts: any;
-  returnvalue: any;
-};
-
-const propTruthy = (prop: string) => (object: object) => Boolean(object[prop]);
+const truthy = (prop: string) => (object: object) => Boolean(object[prop]);
+const statusIs = R.propEq('status');
+const attemptsMadeIs = R.propEq('attemptsMade');
 
 export class QueueRepository implements IQueueRepository {
   private queues: IBoardQueue[];
@@ -59,24 +53,30 @@ export class QueueRepository implements IQueueRepository {
     };
   }
 
-  private mapJobMeta(job: Job<any>): JobState & AggregateJobStatus {
+  private mapJobMeta(job: Job<any>): JobState {
     const {
       id,
       data,
-      opts,
+      opts: { attempts },
+      name,
       returnvalue,
       ...rest
-    } = job.toJSON() as ProviderJobState;
+    } = job.toJSON() as JobMeta;
 
+    // only failed, when attempts == attemptsMade
     const status = R.cond([
-      [propTruthy('failedReason'), R.always('failed')],
-      [propTruthy('finishedOn'), R.always('completed')],
-      [propTruthy('processedOn'), R.always('processing')],
+      [
+        R.allPass([truthy('failedReason'), attemptsMadeIs(attempts)]),
+        R.always('failed'),
+      ],
+      [truthy('finishedOn'), R.always('completed')],
+      [truthy('processedOn'), R.always('processing')],
       [R.defaultTo, R.always('pending')],
     ])(rest);
 
     return {
       status,
+      attempts,
       ...rest,
     };
   }
@@ -140,7 +140,7 @@ export class QueueRepository implements IQueueRepository {
   async getAggregateJobState(
     compositeJobId: string | number,
     options?: JobStateOptions,
-  ): Promise<JobMeta> {
+  ): Promise<JobReport> {
     const [jobId, queueName] = (<string>compositeJobId).split(':');
     const queue = R.find<IBoardQueue>(R.propEq('name', queueName), this.queues);
     if (!queue) {
@@ -155,9 +155,9 @@ export class QueueRepository implements IQueueRepository {
       options.isJobAuthorizedForStateRetrieval || (() => true);
 
     const rec = async (
-      states: (JobState & AggregateJobStatus)[],
+      states: JobState[],
       queue: IQueue & ILinkableQueue,
-    ): Promise<(JobState & AggregateJobStatus)[]> => {
+    ): Promise<JobState[]> => {
       const compositeJobId = buildJobId(jobId, queue.name);
       const [job, err] = await tuple<Job<any>, Error>(
         queue.getNextJob(compositeJobId),
@@ -189,10 +189,10 @@ export class QueueRepository implements IQueueRepository {
     }
 
     const aggregatedStatus = R.cond([
-      [R.all(propTruthy('failedReason')), R.always('failed')],
-      [R.all(propTruthy('finishedOn')), R.always('completed')],
-      [R.any(propTruthy('failedReason')), R.always('partiallyFailed')],
-      [R.any(propTruthy('processedOn')), R.always('processing')],
+      [R.all(statusIs('failed')), R.always('failed')],
+      [R.all(statusIs('completed')), R.always('completed')],
+      [R.any(statusIs('failed')), R.always('partiallyFailed')],
+      [R.any(statusIs('processing')), R.always('processing')],
       [R.defaultTo, R.always('pending')],
     ])(states);
 

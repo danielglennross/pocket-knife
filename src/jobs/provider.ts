@@ -11,7 +11,7 @@ import {
   RedisMetrics,
   IQueueProvider,
   Job,
-  JobState,
+  JobMeta,
   MetricName,
 } from '.';
 import { IManagedLifetime } from '../lifetime';
@@ -20,7 +20,7 @@ type PropertiesForType<T> = {
   [key in keyof T]: { value: T[key] };
 };
 
-type ExtendedJob = Job<any> & JobState & { _progress: number; _logs: string[] };
+type ExtendedJob = Job<any> & JobMeta & { _progress: number; _logs: string[] };
 
 const toLowerSafe = R.pipe(R.defaultTo(''), R.toLower);
 
@@ -102,8 +102,14 @@ export class NonDistributedQueueProvider extends EventEmitter
     const job = <ExtendedJob>{
       _progress: 0,
       _logs: [],
-      data: JSON.stringify(data),
       id: options.jobId,
+      name: this.queueName,
+      opts: {
+        delay: 500,
+        attempts: 1,
+      },
+      returnvalue: null,
+      data: JSON.stringify(data),
       delay: 0,
       timestamp: Date.now(),
       attemptsMade: 0,
@@ -147,7 +153,7 @@ export class NonDistributedQueueProvider extends EventEmitter
     this.handler = null;
     this.jobs = [];
   }
-  private async jobAdded(job: Job<any> & JobState) {
+  private async jobAdded(job: Job<any> & JobMeta) {
     if (!this.handler) {
       throw new Error(`no handler provided for processor: ${job.name}`);
     }

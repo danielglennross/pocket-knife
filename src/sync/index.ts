@@ -43,7 +43,13 @@ type PromiseResolve = (value?: void | PromiseLike<void>) => void;
 export type WaitGroup = {
   add(count: number): void;
   done(): void;
-  wait({ timeoutInMs }?: { timeoutInMs?: number }): Promise<void>;
+  wait({
+    msg,
+    timeoutInMs,
+  }: {
+    msg: string;
+    timeoutInMs: number;
+  }): Promise<void>;
 };
 
 export function waitGroup(): WaitGroup {
@@ -68,14 +74,20 @@ export function waitGroup(): WaitGroup {
       const { resolve } = awaitables.splice(0, 1)[0];
       resolve();
     },
-    wait({ timeoutInMs }: { timeoutInMs?: number } = {}): Promise<void> {
+    wait({
+      msg,
+      timeoutInMs,
+    }: {
+      msg: string;
+      timeoutInMs: number;
+    }): Promise<void> {
       if (awaitables.length === 0) {
         return Promise.resolve();
       }
       const waitFnc = async () => {
         await Promise.all(R.map(({ promise }) => promise, awaitables));
       };
-      return timeoutInMs ? timeout<void>(waitFnc, timeoutInMs) : waitFnc();
+      return timeout<void>(waitFnc, { action: msg, timeoutInMs });
     },
   } as WaitGroup;
 }

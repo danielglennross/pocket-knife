@@ -178,7 +178,7 @@ export interface IQueueRepository {
   getAggregateJobState(
     compositeJobId: string | number,
     options?: JobStateOptions,
-  ): Promise<JobMeta | null>;
+  ): Promise<JobReport>;
 }
 
 export type QueueDebugInfo = {
@@ -208,19 +208,24 @@ export type JobBoardStatus = keyof typeof JobBoardStatuses;
 
 export type CleanableJobStatus = 'completed' | 'failed';
 
-export type AggregateJobStatus = {
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'partiallyFailed';
-};
+export type JobStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'partiallyFailed';
 
-export type JobStateOpts = {
+export type JobMetaOpts = {
   delay?: number;
+  attempts?: number;
 };
 
-export type JobState = {
-  id?: string;
-  opts?: JobStateOpts;
-  data?: any;
+export type JobMeta = {
+  id: string;
   name: string;
+  data: any;
+  opts: JobMetaOpts;
+  returnvalue: any;
   progress: number;
   delay: number;
   timestamp: number;
@@ -231,15 +236,25 @@ export type JobState = {
   processedOn: number | null;
 };
 
-export type JobMeta =
-  | ({ kind: 'job' } & JobState & AggregateJobStatus)
-  | ({
+export type JobReport =
+  | ({ kind: 'job' } & JobState)
+  | {
       kind: 'job-chain';
-      jobs: (JobState & AggregateJobStatus)[];
-    } & AggregateJobStatus);
+      jobs: JobState[];
+      status: JobStatus;
+    };
 
-export type JobOpts = {
-  delay?: number;
+export type JobState = {
+  status: JobStatus;
+  attempts: number;
+  progress: JobMeta['progress'];
+  delay: JobMeta['delay'];
+  timestamp: JobMeta['timestamp'];
+  attemptsMade: JobMeta['attemptsMade'];
+  failedReason: JobMeta['failedReason'];
+  stacktrace: JobMeta['stacktrace'];
+  finishedOn: JobMeta['finishedOn'];
+  processedOn: JobMeta['processedOn'];
 };
 
 export type UpdateJobProgress = (progress: number) => Promise<void>;
@@ -250,10 +265,10 @@ export type Job<T> = {
   id: string | number;
   data: T;
   attemptsMade: number;
-  opts?: JobOpts;
+  opts?: JobMetaOpts;
   progress: UpdateJobProgress;
   log: AddJobLog;
-  toJSON: () => JobState;
+  toJSON: () => JobMeta;
 };
 
 export type JobStateOptions = {
@@ -275,8 +290,8 @@ export type JobDebugInfo = {
 };
 
 export type JobOptions = {
-  timeout?: number;
-  retries?: number;
+  timeout?: (() => number) | number;
+  retries?: (() => number) | number;
   omitJobDataPropsFromLogs?: string[];
 };
 

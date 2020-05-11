@@ -54,5 +54,8 @@ export { jobs };
 import * as sync from './sync';
 export { sync };
 
+import * as trace from './trace';
+export { trace };
+
 import * as types from './types';
 export { types };

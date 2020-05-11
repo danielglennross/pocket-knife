@@ -1,5 +1,5 @@
 import * as R from 'ramda';
-import { AsyncFunctionKeys } from '../types';
+import { AsyncFunctionKeys, CallingContext } from '../types';
 
 export async function safe<T>(promise: Promise<T>): Promise<T> {
   try {
@@ -20,90 +20,7 @@ export async function tuple<T, E = any>(
   }
 }
 
-export class RetryError extends Error {
-  constructor(private error: Error) {
-    super(`Promise retried max times with error: ${error.message}`);
-  }
-}
-
-export async function retryWithBackOff<E extends Error, T = any>(
-  func: () => Promise<T>,
-  options?: {
-    retries?: number;
-    delay?: number;
-    shouldRetry?: {
-      when: (data: E | T) => boolean;
-      errMsg: (data: E | T) => string;
-    };
-    onFail?: (data: E | T, retries: number) => Promise<void>;
-    withErrMsg?: (data: E | T, retries: number) => string;
-  },
-): Promise<T> {
-  let {
-    retries = 3,
-    delay = 300,
-    shouldRetry = {
-      when: () => false,
-      errMsg: () => 'should retry evaluated as true',
-    },
-    onFail = () => Promise.resolve(),
-  } = options || {};
-
-  return (async function run(attempt: number, timeout: number): Promise<T> {
-    async function evaluateRetry<U extends T & { toString: () => string }>(
-      e: E | U,
-    ) {
-      await safe(onFail(e, attempt));
-      if (attempt >= retries) {
-        throw new RetryError(e instanceof Error ? e : new Error(e.toString()));
-      }
-      await new Promise(res => setTimeout(res, timeout));
-      return run(++attempt, timeout * 2);
-    }
-
-    try {
-      const result = await func();
-      if (shouldRetry.when(result)) {
-        return evaluateRetry({
-          ...result,
-          toString: () => shouldRetry.errMsg(result),
-        });
-      }
-      return result;
-    } catch (e) {
-      if (shouldRetry.when(e)) {
-        return evaluateRetry(e);
-      }
-      throw e;
-    }
-  })(1, delay);
-}
-
-export class TimeoutError extends Error {
-  constructor(timeoutMs: number) {
-    super(`Promise timed out in ${timeoutMs} ms`);
-  }
-}
-
-export function timeout<T = any>(
-  func: () => Promise<T>,
-  timeoutMs?: number,
-): Promise<T> {
-  timeoutMs = timeoutMs || 30 * 1000;
-  const timeout = new Promise<T>((_, reject) => {
-    const id = setTimeout(() => {
-      clearTimeout(id);
-      reject(new TimeoutError(timeoutMs));
-    }, timeoutMs);
-  });
-
-  return Promise.race([func(), timeout]);
-}
-
-export type PromisePolicy<T = any> = (
-  p: () => Promise<T>,
-  options?: any,
-) => Promise<T>;
+export type PromisePolicy<T = any> = (p: () => Promise<T>) => Promise<T>;
 
 // effectively builds up a chain of decorators like:
 //
@@ -136,6 +53,10 @@ export function withPolicies(
 }
 
 function withPromisePolicyChain(decorators: PromisePolicy[]) {
+  if (R.anyPass([R.isNil, R.isEmpty])(decorators)) {
+    decorators = [task => task()]; // identity decorator
+  }
+
   const [firstDecorator, ...otherDecorators] = decorators;
   return function runForTask(task: () => Promise<any>) {
     const chainedDecorators = R.reduce(
@@ -151,35 +72,9 @@ function withPromisePolicyChain(decorators: PromisePolicy[]) {
   };
 }
 
-export type PolicyFactory<T> = (decorated: T) => PromisePolicy;
+export class PolicyError extends Error {}
 
-export function withPolicyAwareOperations<T extends object>({
-  policyFactories,
-  forKeys,
-}: {
-  policyFactories: PolicyFactory<T>[];
-  forKeys: AsyncFunctionKeys<T>[];
-}): (decorated: T) => T {
-  return function(decorated: T) {
-    async function runInPolicy(
-      key: AsyncFunctionKeys<T>,
-      ...args: any[]
-    ): Promise<any> {
-      return withPolicies(
-        R.map(pFactory => pFactory(decorated), policyFactories),
-        (<any>decorated[key]).bind(decorated, ...args),
-      );
-    }
-
-    return new Proxy(decorated, {
-      get(target: T, key: keyof T) {
-        return function wrapper(...args: any[]) {
-          if (!R.contains(key, forKeys)) {
-            return (<any>target[key]).call(target, ...args);
-          }
-          return runInPolicy(<AsyncFunctionKeys<T>>key, ...args);
-        };
-      },
-    });
-  };
-}
+export * from './policies/bulkhead';
+export * from './policies/circuitBreaker';
+export * from './policies/retry';
+export * from './policies/timeout';

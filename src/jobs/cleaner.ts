@@ -6,6 +6,7 @@ import { tuple, safe } from '../async';
 import { IManagedLifetime, withManagedLifetime } from '../lifetime';
 import { guid } from '../uuid';
 import { IDiagnosable, HealthCheckStatus, Debug } from '../diagnosable';
+import { useLogger, useCallerName } from '../trace';
 import {
   Job,
   IQueueCleaner,
@@ -292,6 +293,6 @@ export function createQueueCleaner({
   >({
     setup,
     destroy,
-    logger,
+    useTraceArgs: R.pipe(useLogger(logger), useCallerName('queueCleaner')),
   })(queueCleaner);
 }

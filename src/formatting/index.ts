@@ -55,7 +55,9 @@ export function printObject(obj: object): string {
       if (parsed) {
         return walkInner(json);
       }
-      str += `\n${space}${key}: ${value || ''.toString()}`;
+      str += `\n${space}${key}: ${
+        !(value === null || value === void 0) ? value.toString() : ''
+      }`;
     });
     return str;
   }

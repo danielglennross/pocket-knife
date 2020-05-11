@@ -126,7 +126,7 @@ export function createHttpClient({
         return {
           https: new HttpProxyAgent({ ...proxyOptions }),
           http: new HttpProxyAgent({ ...proxyOptions }),
-          httpsAllowUnauthorized: new HttpProxyAgent({
+          httpsAllowUnauthorized: new HttpProxyAgent(<any>{
             ...proxyOptions,
             rejectUnauthorized: false,
           }),
@@ -135,7 +135,7 @@ export function createHttpClient({
     : {
         https: new HttpsAgent({ ...agentDefaults }),
         http: new HttpAgent({ ...agentDefaults }),
-        httpsAllowUnauthorized: new HttpsAgent({
+        httpsAllowUnauthorized: new HttpsAgent(<any>{
           ...agentDefaults,
           rejectUnauthorized: false,
         }),
@@ -461,11 +461,7 @@ export function createRetryingHttpClient(
           }
           return false;
         },
-        errMsg: (response: Error | HttpResponse) => {
-          return `Outbound request to: ${routeDesc(
-            requestData,
-          )} failed too many times`;
-        },
+        action: `Outbound request to: ${routeDesc(requestData)}`,
       },
       onFail: (_, retries: number) => {
         if (logger) {

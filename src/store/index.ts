@@ -1,7 +1,8 @@
-import IORedis from 'ioredis';
 import * as R from 'ramda';
+import IORedis from 'ioredis';
 import { IManagedLifetime, withManagedLifetime } from '../lifetime';
 import { tuple } from '../async';
+import { useCallerName } from '../trace';
 
 export type ConnectionDetails = {
   host: string;
@@ -148,5 +149,6 @@ export function createRedisClient(
     setup,
     destroy,
     forKeys: ['safePing', 'client'],
+    useTraceArgs: useCallerName('redisClient'),
   })(redisClient);
 }

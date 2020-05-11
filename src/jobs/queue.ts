@@ -32,6 +32,7 @@ import {
   Debug,
   NamedDebug,
 } from '../diagnosable';
+import { useLogger, useCallerName } from '../trace';
 
 function getLoggableJobData<
   ET extends { jobOptions: { omitJobDataPropsFromLogs?: string[] } }
@@ -45,9 +46,25 @@ const logMessage = R.curry((queueName: string, msg: string) => {
 });
 
 const defaultJobOptions: JobOptions = {
-  retries: 1,
+  retries: 3,
   timeout: 30000,
   omitJobDataPropsFromLogs: [],
+};
+
+const evaluateJobOptions = (jobOptions: JobOptions) => {
+  return R.reject(R.isNil, {
+    retries: Number.isInteger(jobOptions.retries as number)
+      ? jobOptions.retries
+      : ((jobOptions.retries as () => number) || (() => null))(),
+    timeout: Number.isInteger(jobOptions.timeout as number)
+      ? jobOptions.timeout
+      : ((jobOptions.timeout as () => number) || (() => null))(),
+    omitJobDataPropsFromLogs: jobOptions.omitJobDataPropsFromLogs,
+  }) as {
+    retries: number;
+    timeout: number;
+    omitJobDataPropsFromLogs: string[];
+  };
 };
 
 export function createQueue<
@@ -85,7 +102,12 @@ export function createQueue<
     }
     if (provider) {
       onTeardown(queue);
-      await safe(timeout(() => provider.whenCurrentJobsFinished(), 3000));
+      await safe(
+        timeout(() => provider.whenCurrentJobsFinished(), {
+          action: 'teardown queue provider',
+          timeoutInMs: 3000,
+        }),
+      );
       await safe(provider.close());
       provider.removeAllListeners();
       if (isManagedLifetime(provider)) {
@@ -95,6 +117,8 @@ export function createQueue<
   };
 
   const setup = async () => {
+    diagnosticsEnabled = true;
+
     const handleCompletedJob = async (job: Job<ET>) => {
       logger.info(
         logMessageForQueue(`completed job ${job.id}`),
@@ -238,6 +262,8 @@ export function createQueue<
   };
 
   const destroy = async () => {
+    diagnosticsEnabled = false;
+
     try {
       await disconnect();
     } catch {
@@ -326,9 +352,9 @@ export function createQueue<
       compositeJobId?: string,
     ): Promise<string> {
       const { retries, timeout, omitJobDataPropsFromLogs } = R.pipe(
-        R.mergeRight(queueJobOptions),
-        R.mergeRight(defaultJobOptions),
-      )(jobOptions);
+        R.mergeRight(evaluateJobOptions(queueJobOptions)),
+        R.mergeRight(evaluateJobOptions(defaultJobOptions)),
+      )(evaluateJobOptions(jobOptions));
 
       const extendedData = {
         ...data,
@@ -385,7 +411,6 @@ export function createQueue<
   return withManagedLifetime<Queue<T> & IDiagnosable<QueueDebugInfo>>({
     setup,
     destroy,
-    logger,
     forKeys: [
       'clean',
       'createJob',
@@ -396,6 +421,7 @@ export function createQueue<
       'runScheduledCleaner',
       'work',
     ],
+    useTraceArgs: R.pipe(useLogger(logger), useCallerName(queue.name)),
   })(queue);
 }
 
@@ -409,17 +435,21 @@ type DecoratedPartialFunctionsFor<T> = {
 export function withDecoratedQueue<T extends IQueue>(
   decorations: DecoratedPartialFunctionsFor<T>,
 ) {
-  const forKeys = <(keyof T)[]>Object.keys(decorations);
-  return function(decorated: T): T {
-    return new Proxy(decorated, {
-      get(target: T, key: keyof T) {
-        return function wrapper(...args: any[]) {
-          if (!R.contains(key, forKeys)) {
-            return (<any>target[key]).call(target, ...args);
-          }
-          return decorations[key].call(decorations, decorated, ...args);
-        };
-      },
-    });
+  const forKeys = Object.keys(decorations);
+  return function(original: T): T {
+    const decorated = R.reduce(
+      (acc, key) => ({
+        ...acc,
+        [key]: decorations[key].bind(decorations, original),
+      }),
+      <Partial<T>>{},
+      forKeys,
+    );
+
+    // 'decorated' keys will override 'original' keys
+    return {
+      ...original,
+      ...decorated,
+    };
   };
 }
