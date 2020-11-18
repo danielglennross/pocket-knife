@@ -64,7 +64,7 @@
     "prettier": "^1.16.4",
     "prettier-check": "2.0.0",
     "reflect-metadata": "^0.1.13",
-    "semantic-release": "^15.13.16",
+    "semantic-release": "^17.2.3",
     "typescript": "^3.8.3"
   },
   "optionalDependencies": {
